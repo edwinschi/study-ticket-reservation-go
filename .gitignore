@@ -1,0 +1,16 @@
+.env
+.DS_Store
+
+# Bruno local secrets and overrides
+api/bruno/.env
+api/bruno/.env.*
+!api/bruno/.env.sample
+
+# Go build/test artifacts
+bin/
+coverage.out
+*.test
+
+# Local editor metadata
+.idea/
+.vscode/
