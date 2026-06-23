@@ -127,6 +127,32 @@ Stop containers and remove local volumes:
 docker compose down -v
 ```
 
+## API testing with Bruno
+
+The repository includes a versioned Bruno collection in:
+
+```text
+api/bruno/
+```
+
+Start the API with `docker compose up --build`, open Bruno, choose
+**Open Collection**, and select the `api/bruno/` folder. The local Bruno
+environment uses:
+
+```text
+baseURL=http://localhost:8080
+```
+
+Suggested manual flow:
+
+1. Run `health/Healthcheck` and `health/Readiness`.
+2. Run `sessions/Create Anonymous Session` so Bruno stores the `visitor_session` cookie.
+3. Run `stress-admin/Seed Stress Fixture`.
+4. Copy the returned `event_id`, `ticket_type_id`, and relevant `seat_ids` into the active Bruno environment.
+5. Run reservation requests and then `stress-admin/Assert Consistency`.
+
+See `api/bruno/README.md` for the full collection notes.
+
 ## Environment variables
 
 The project includes `.env.example` with the local defaults.
@@ -576,23 +602,25 @@ Passwords and full cookies are not logged.
 
 ## Useful commands
 
-```bash
-make up
-make down
-make test
-make fmt
-make vet
-make tidy
-make migrate-up
-make migrate-down
-make sqlc
-make k6
-make stress
-make stress-quantity
-make stress-seats
-make assert
-make logs
-```
+| Command | Description |
+| --- | --- |
+| `make up` | Builds and starts the full Docker Compose environment. |
+| `make down` | Stops the Docker Compose environment without removing volumes. |
+| `make test` | Runs the Go test suite inside the API container. |
+| `make fmt` | Formats Go code with `go fmt`. |
+| `make vet` | Runs `go vet` inside the API container. |
+| `make tidy` | Updates `go.mod` and `go.sum` with `go mod tidy`. |
+| `make logs` | Follows API and worker container logs. |
+| `make migrate-up` | Runs pending PostgreSQL migrations. |
+| `make migrate-down` | Rolls back one PostgreSQL migration. |
+| `make sqlc` | Regenerates type-safe Go code from SQL queries. |
+| `make stress-reset` | Resets local stress-test fixtures through the admin endpoint. |
+| `make stress-seed` | Creates local stress-test fixtures through the admin endpoint. |
+| `make stress` | Runs the mixed k6 stress script. |
+| `make k6` | Alias for `make stress`. |
+| `make stress-quantity` | Runs the quantity-only k6 stress script. |
+| `make stress-seats` | Runs the seat-only k6 stress script. |
+| `make assert` | Calls the consistency assertion endpoint. |
 
 ## Current limitations
 

@@ -1,0 +1,9 @@
+{
+  "version": "1",
+  "name": "Ticket Reservation Go Lab",
+  "type": "collection",
+  "ignore": [
+    "node_modules",
+    ".git"
+  ]
+}
