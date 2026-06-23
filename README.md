@@ -271,10 +271,13 @@ Available scripts:
 - `seats.js`: anonymous users reserve random seats and accept expected conflicts.
 - `mixed.js`: mixed quantity and seat traffic with lifecycle transitions.
 
+Each k6 virtual user creates one anonymous visitor session and reuses its cookie across
+iterations, matching browser-like traffic more closely than creating a new session per request.
+
 Recommended local flow:
 
 ```bash
-docker compose up --build
+make stress-up
 
 curl -X POST http://localhost:8080/v1/admin/stress/reset
 
@@ -605,6 +608,7 @@ Passwords and full cookies are not logged.
 | Command | Description |
 | --- | --- |
 | `make up` | Builds and starts the full Docker Compose environment. |
+| `make stress-up` | Builds and starts the environment with request logs reduced for stress tests. |
 | `make down` | Stops the Docker Compose environment without removing volumes. |
 | `make test` | Runs the Go test suite inside the API container. |
 | `make fmt` | Formats Go code with `go fmt`. |

@@ -1,4 +1,4 @@
-.PHONY: up down test fmt vet tidy logs migrate-up migrate-down sqlc k6 stress stress-quantity stress-seats stress-reset stress-seed assert
+.PHONY: up stress-up down test fmt vet tidy logs migrate-up migrate-down sqlc k6 stress stress-quantity stress-seats stress-reset stress-seed assert
 
 POSTGRES_DB ?= ticket_reservation_go
 POSTGRES_USER ?= ticket_reservation_go
@@ -10,6 +10,9 @@ K6_DURATION ?= 30s
 
 up:
 	docker compose up --build
+
+stress-up:
+	LOG_LEVEL=WARN docker compose up --build -d
 
 down:
 	docker compose down

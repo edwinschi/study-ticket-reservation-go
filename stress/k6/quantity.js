@@ -17,6 +17,7 @@ const SLEEP_SECONDS = Number(__ENV.SLEEP_SECONDS || '0.1');
 export const options = {
   vus: Number(__ENV.VUS || '100'),
   duration: __ENV.DURATION || '30s',
+  noCookiesReset: true,
   thresholds: {
     // 409 is explicitly expected under contention and is excluded by expectedStatuses above.
     http_req_failed: ['rate<0.01'],
@@ -30,6 +31,7 @@ const quantityCreated = new Counter('quantity_reservations_created');
 const quantityConflicts = new Counter('quantity_reservation_conflicts');
 const quantityCancelled = new Counter('quantity_reservations_cancelled');
 const quantityConfirmed = new Counter('quantity_reservations_confirmed');
+let sessionReady = false;
 
 function jsonHeaders() {
   return { 'Content-Type': 'application/json' };
@@ -70,13 +72,18 @@ function loadSeed() {
   return seed;
 }
 
-function createAnonymousSession() {
+function ensureAnonymousSession() {
+  if (sessionReady) {
+    return true;
+  }
+
   const response = http.post(`${BASE_URL}/v1/sessions/anonymous`, null, { timeout: '5s' });
   recordServerError(response, 'anonymous-session');
 
-  return check(response, {
+  sessionReady = check(response, {
     'anonymous session created': (r) => r.status === 201,
   });
+  return sessionReady;
 }
 
 function reserveQuantity(seed) {
@@ -140,7 +147,7 @@ export function setup() {
 }
 
 export default function (seed) {
-  if (!createAnonymousSession()) {
+  if (!ensureAnonymousSession()) {
     sleep(SLEEP_SECONDS);
     return;
   }

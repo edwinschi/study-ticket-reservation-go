@@ -17,6 +17,7 @@ const SLEEP_SECONDS = Number(__ENV.SLEEP_SECONDS || '0.1');
 export const options = {
   vus: Number(__ENV.VUS || '100'),
   duration: __ENV.DURATION || '30s',
+  noCookiesReset: true,
   thresholds: {
     // Seat conflicts are expected when many users pick the same seat.
     http_req_failed: ['rate<0.01'],
@@ -30,6 +31,7 @@ const seatCreated = new Counter('seat_reservations_created');
 const seatConflicts = new Counter('seat_reservation_conflicts');
 const seatCancelled = new Counter('seat_reservations_cancelled');
 const seatConfirmed = new Counter('seat_reservations_confirmed');
+let sessionReady = false;
 
 function requestParams() {
   return {
@@ -70,13 +72,18 @@ function loadSeed() {
   return seed;
 }
 
-function createAnonymousSession() {
+function ensureAnonymousSession() {
+  if (sessionReady) {
+    return true;
+  }
+
   const response = http.post(`${BASE_URL}/v1/sessions/anonymous`, null, { timeout: '5s' });
   recordServerError(response, 'anonymous-session');
 
-  return check(response, {
+  sessionReady = check(response, {
     'anonymous session created': (r) => r.status === 201,
   });
+  return sessionReady;
 }
 
 function reserveSeat(seed) {
@@ -138,7 +145,7 @@ export function setup() {
 }
 
 export default function (seed) {
-  if (!createAnonymousSession()) {
+  if (!ensureAnonymousSession()) {
     sleep(SLEEP_SECONDS);
     return;
   }

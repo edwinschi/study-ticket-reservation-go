@@ -90,6 +90,25 @@ func (s *Service) ReserveQuantity(
 			return fmt.Errorf("get idempotent quantity reservation: %w", err)
 		}
 
+		/*
+			This UPDATE is intentionally atomic.
+			PostgreSQL checks the available stock and increments reserved_quantity in the same
+			statement, preventing two concurrent requests from reserving the same last ticket.
+			No Redis counter or application-side read-then-write calculation is trusted here.
+
+			The update runs before inserting the reservation header so expected stock conflicts do
+			not create rows that will immediately be rolled back under heavy contention.
+		*/
+		if _, err := q.ReserveTicketQuantity(ctx, sqlc.ReserveTicketQuantityParams{
+			ID:               ticketTypeID,
+			EventID:          eventID,
+			ReservedQuantity: input.Quantity,
+		}); isNoRows(err) {
+			return ErrInsufficientStock
+		} else if err != nil {
+			return fmt.Errorf("reserve ticket quantity: %w", err)
+		}
+
 		reservation, err := q.CreateReservation(ctx, sqlc.CreateReservationParams{
 			EventID:          eventID,
 			VisitorSessionID: visitorSession.ID,
@@ -104,22 +123,6 @@ func (s *Service) ReserveQuantity(
 		}
 		if err != nil {
 			return fmt.Errorf("create reservation: %w", err)
-		}
-
-		/*
-			This UPDATE is intentionally atomic.
-			PostgreSQL checks the available stock and increments reserved_quantity in the same
-			statement, preventing two concurrent requests from reserving the same last ticket.
-			No Redis counter or application-side read-then-write calculation is trusted here.
-		*/
-		if _, err := q.ReserveTicketQuantity(ctx, sqlc.ReserveTicketQuantityParams{
-			ID:               ticketTypeID,
-			EventID:          eventID,
-			ReservedQuantity: input.Quantity,
-		}); isNoRows(err) {
-			return ErrInsufficientStock
-		} else if err != nil {
-			return fmt.Errorf("reserve ticket quantity: %w", err)
 		}
 
 		item, err := q.CreateReservationItem(ctx, sqlc.CreateReservationItemParams{
@@ -181,22 +184,6 @@ func (s *Service) ReserveSeats(
 			return nil
 		}
 
-		reservation, err := q.CreateReservation(ctx, sqlc.CreateReservationParams{
-			EventID:          eventID,
-			VisitorSessionID: visitorSession.ID,
-			UserID:           visitorSession.UserID,
-			Status:           StatusReserved,
-			ReservationType:  ReservationTypeSeats,
-			IdempotencyKey:   idempotencyKey,
-			ExpiresAt:        pgtype.Timestamptz{Time: expiresAt, Valid: true},
-		})
-		if isUniqueViolation(err) {
-			return ErrIdempotencyReplayRequired
-		}
-		if err != nil {
-			return fmt.Errorf("create seat reservation: %w", err)
-		}
-
 		/*
 			Every API process must coordinate through PostgreSQL, not through in-memory locks.
 			In production, there can be many containers and workers; a mutex in one process would
@@ -205,6 +192,9 @@ func (s *Service) ReserveSeats(
 
 			The query also orders by seat id. When two requests ask for [A, B] and [B, A], both
 			transactions acquire locks in the same deterministic order, reducing deadlock risk.
+
+			The seats are locked before the reservation header is inserted, matching the Python
+			implementation and avoiding wasted reservation rows for requests that fail validation.
 		*/
 		lockedSeatIDs, err := q.LockEventSeats(ctx, sqlc.LockEventSeatsParams{
 			EventID: eventID,
@@ -247,6 +237,22 @@ func (s *Service) ReserveSeats(
 			if err := q.ExpireReservationsByIDs(ctx, expiredReservationIDs); err != nil {
 				return fmt.Errorf("expire reservations: %w", err)
 			}
+		}
+
+		reservation, err := q.CreateReservation(ctx, sqlc.CreateReservationParams{
+			EventID:          eventID,
+			VisitorSessionID: visitorSession.ID,
+			UserID:           visitorSession.UserID,
+			Status:           StatusReserved,
+			ReservationType:  ReservationTypeSeats,
+			IdempotencyKey:   idempotencyKey,
+			ExpiresAt:        pgtype.Timestamptz{Time: expiresAt, Valid: true},
+		})
+		if isUniqueViolation(err) {
+			return ErrIdempotencyReplayRequired
+		}
+		if err != nil {
+			return fmt.Errorf("create seat reservation: %w", err)
 		}
 
 		reservedSeats := make([]sqlc.ReservationSeat, 0, len(seatIDs))

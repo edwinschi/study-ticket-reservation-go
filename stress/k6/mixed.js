@@ -18,6 +18,7 @@ const QUANTITY_FLOW_RATIO = Number(__ENV.QUANTITY_FLOW_RATIO || '0.6');
 export const options = {
   vus: Number(__ENV.VUS || '100'),
   duration: __ENV.DURATION || '30s',
+  noCookiesReset: true,
   thresholds: {
     // 409 means expected contention; real failures are 5xx, timeouts, or failed consistency.
     http_req_failed: ['rate<0.01'],
@@ -33,6 +34,7 @@ const seatCreated = new Counter('seat_reservations_created');
 const seatConflicts = new Counter('seat_reservation_conflicts');
 const cancelled = new Counter('reservations_cancelled');
 const confirmed = new Counter('reservations_confirmed');
+let sessionReady = false;
 
 function requestParams() {
   return {
@@ -71,13 +73,18 @@ function loadSeed() {
   return seed;
 }
 
-function createAnonymousSession() {
+function ensureAnonymousSession() {
+  if (sessionReady) {
+    return true;
+  }
+
   const response = http.post(`${BASE_URL}/v1/sessions/anonymous`, null, { timeout: '5s' });
   recordServerError(response, 'anonymous-session');
 
-  return check(response, {
+  sessionReady = check(response, {
     'anonymous session created': (r) => r.status === 201,
   });
+  return sessionReady;
 }
 
 function reserveQuantity(seed) {
@@ -166,7 +173,7 @@ export function setup() {
 }
 
 export default function (seed) {
-  if (!createAnonymousSession()) {
+  if (!ensureAnonymousSession()) {
     sleep(SLEEP_SECONDS);
     return;
   }
